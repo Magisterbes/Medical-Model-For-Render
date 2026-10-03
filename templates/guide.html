@@ -230,6 +230,32 @@ curl -X POST -F "file=@my_staging.csv"   -F "type=staging"   http://localhost:50
         </table>
     </div>
 
+    <div class="card">
+        <h2>Appendix: Gompertz model parameters</h2>
+        <p>Tumour growth follows the <b>reduced Gompertz</b> model:</p>
+<pre>V(t) = exp(K - exp(C - B * t))      B = exp(log(B_pop) + eps),  eps ~ N(0, B_std^2)</pre>
+        <p>where <code>V(t)</code> is tumour size (a proxy for stage) at time <code>t</code> since
+            cancer onset. The aggressive and non-aggressive groups have separate parameter sets;
+            all four values can be edited individually in the parameter panel.</p>
+        <table>
+            <tr><th>Parameter</th><th>Meaning</th></tr>
+            <tr><td><code>K</code></td>
+                <td>Carrying capacity. <code>V(t)</code> approaches <code>exp(K)</code> as time
+                    grows, so a larger K means a larger final tumour.</td></tr>
+            <tr><td><code>C</code></td>
+                <td>Shape / offset parameter. Sets the initial size
+                    <code>V(0) = exp(K − exp(C))</code>, which is close to 0, and places the
+                    inflection point of the curve at <code>t = C / B</code>.</td></tr>
+            <tr><td><code>B_pop</code></td>
+                <td>Population-mean growth rate, on a log scale. Larger values mean faster
+                    progression; each patient draws <code>B = exp(log(B_pop) + eps)</code>.</td></tr>
+            <tr><td><code>B_std</code></td>
+                <td>Standard deviation of the individual random effect on <code>log(B)</code> —
+                    how much patients differ in growth speed (<code>0</code> = everybody grows at
+                    the same rate).</td></tr>
+        </table>
+    </div>
+
     <p class="muted" style="text-align:center;margin:24px 0">
         MedicalModel2024 — academic use. Based on
         <a href="https://github.com/Magisterbes/BespalovPhd">Magisterbes/BespalovPhd</a>.

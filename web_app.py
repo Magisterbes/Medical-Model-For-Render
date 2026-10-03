@@ -44,6 +44,9 @@ ALLOWED_EXTENSIONS = {'csv'}
 EXPORT_DIR = os.environ.get('EXPORT_DIR', 'output/exports')
 _exports: list = []
 
+# Reduced Gompertz model V(t) = exp(K - exp(C - B*t)) with B = exp(log(B_pop) + eps)
+GOMPERTZ_KEYS = ('K', 'C', 'B_pop', 'B_std')
+
 # Defaults tuned for a 512 MB instance — see model/memory.py for the budget.
 DEFAULT_POPULATION = int(os.environ.get('DEFAULT_POPULATION', 20000))
 
@@ -541,18 +544,26 @@ def _apply_overrides(p, data):
         p.test_fp_selected = float(data['test_fp_selected'])
     if 'participation_rate' in data:
         p.participation_rate = float(data['participation_rate'])
-    if 'gompertz_aggressive' in data:
-        g = data['gompertz_aggressive']
-        p.reduced_gompertz_aggressive = [float(g[0]), float(g[1]), float(g[2]), float(g[3]) if len(g)>3 else 0.1]
-        p.gompertz_aggressive.K = p.reduced_gompertz_aggressive[0]
-        p.gompertz_aggressive.C = p.reduced_gompertz_aggressive[1]
-        p.gompertz_aggressive.B_pop = p.reduced_gompertz_aggressive[2]
-    if 'gompertz_non_aggressive' in data:
-        g = data['gompertz_non_aggressive']
-        p.reduced_gompertz_non_aggressive = [float(g[0]), float(g[1]), float(g[2]), float(g[3]) if len(g)>3 else 0.1]
-        p.gompertz_non_aggressive.K = p.reduced_gompertz_non_aggressive[0]
-        p.gompertz_non_aggressive.C = p.reduced_gompertz_non_aggressive[1]
-        p.gompertz_non_aggressive.B_pop = p.reduced_gompertz_non_aggressive[2]
+    # Reduced Gompertz models V(t) = exp(K - exp(C - B*t)), B = exp(log(B_pop) + eps).
+    # Accept both the 4-element list form and the UI's separate per-variable fields
+    # (gompertz_aggressive_K / _C / _B_pop / _B_std).
+    for name in ('gompertz_aggressive', 'gompertz_non_aggressive'):
+        list_value = data.get(name)
+        fields = {k: data.get(f'{name}_{k}') for k in GOMPERTZ_KEYS}
+        if list_value is None and all(v is None for v in fields.values()):
+            continue
+        values = list(getattr(p, 'reduced_' + name))
+        if list_value is not None:
+            if not isinstance(list_value, (list, tuple)):
+                list_value = [list_value]
+            values = [float(v) for v in list_value]
+        for i, key in enumerate(GOMPERTZ_KEYS):
+            if fields[key] is not None:
+                values[i] = float(fields[key])
+        values = (values + [0.1])[:4]
+        setattr(p, 'reduced_' + name, values)
+        model = getattr(p, name)
+        model.K, model.C, model.B_pop, model.B_std = values[0], values[1], values[2], values[3]
     if 'growth_rate_limits' in data:
         p.growth_rate_limits = list(data['growth_rate_limits'])
     if 'aggressiveness_threshold' in data:

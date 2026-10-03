@@ -1,0 +1,17 @@
+services:
+  web:
+    build:
+      context: .
+    image: medicalmodel2024:latest
+    container_name: medicalmodel2024
+    ports:
+      - "5000:5000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "5000"
+    # Persist results, fitted parameters and uploaded datasets on the host.
+    volumes:
+      - ./output:/app/output
+      - ./config:/app/config
+      - ./data:/app/data
+    restart: unless-stopped

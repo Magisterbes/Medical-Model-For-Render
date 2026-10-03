@@ -96,6 +96,27 @@ header) covering:
 - Docker/Render caveats (uploads are ephemeral on the free plan) and a
   troubleshooting table of every validation message.
 
+## Downloads
+
+After each **Fit + Simulate** or **Sensitivity** run the UI shows a
+**⬇ Downloads** panel. The same list is available at `GET /api/downloads` and
+each file is streamed from `GET /api/download/<name>`.
+
+| Single run | Sensitivity |
+|------------|-------------|
+| `agents.csv` — every agent, **including healthy ones** | `agents_factor_<x>.csv` — per factor, cancer patients only |
+| `agents_cancer.csv` — cancer patients only | `sens_chart_*.csv` — one file per chart |
+| `chart_*.csv` — the data behind every chart | `sens_metrics.csv` — metrics per factor |
+| `summary.csv`, `meta.json` | `meta.json` |
+
+Files are streamed to `output/exports/` in fixed-size chunks, so the peak extra
+memory stays at a few MB regardless of the population size (a 50 000-agent
+history is ~3.8 MB of CSV). Only the **latest** run is kept — starting a new run
+replaces the folder. On Render the folder is ephemeral, like the uploads.
+
+`meta.json` documents every agent column, and all exports use `;` as the
+delimiter, matching the input files.
+
 ## Local development
 
 ```bash

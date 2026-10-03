@@ -145,7 +145,40 @@
     </div>
 
     <div class="card">
-        <h2>5. Uploading over the API (optional)</h2>
+        <h2>5. Downloads: agent history and chart CSVs</h2>
+        <p>After every <b>Fit + Simulate</b> or <b>Sensitivity</b> run a <b>⬇ Downloads</b> panel
+            appears listing the generated files. They are written to disk once, in chunks, and
+            served from there — nothing large is held in memory.</p>
+        <h3>Single run</h3>
+        <ul>
+            <li><code>agents.csv</code> — one row per agent, <b>including healthy ones</b>
+                (age, death cause, cancer onset, stage ages, treatment, screening, …).</li>
+            <li><code>agents_cancer.csv</code> — the same columns, cancer patients only.</li>
+            <li><code>chart_incidence.csv</code>, <code>chart_mortality.csv</code>,
+                <code>chart_stages.csv</code>, <code>chart_survival.csv</code>,
+                <code>chart_years_saved.csv</code>, <code>chart_diagnosis_rates.csv</code> —
+                the data behind each chart on the page.</li>
+            <li><code>summary.csv</code> — the summary metrics, one per row.</li>
+            <li><code>meta.json</code> — run metadata and a legend for every agent column.</li>
+        </ul>
+        <h3>Sensitivity</h3>
+        <ul>
+            <li><code>sens_chart_*.csv</code> — one file per chart; the first column is the x axis,
+                then one column per lead-time factor.</li>
+            <li><code>sens_metrics.csv</code> — aggregate metrics for every factor.</li>
+            <li><code>agents_factor_&lt;x&gt;.csv</code> — per-agent history for that factor
+                (cancer patients only, to keep the size down).</li>
+        </ul>
+        <div class="warn">
+            Only the <b>latest</b> run is kept — starting a new run replaces the previous files.
+            On a hosted instance the folder is also lost when the service restarts, so download
+            what you need before then. Data files use <code>;</code> as the delimiter, like the
+            input files.
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>6. Uploading over the API (optional)</h2>
 <pre>curl -X POST -F "file=@my_aggregate.csv" -F "type=aggregate" http://localhost:5000/api/data/upload
 curl -X POST -F "file=@my_staging.csv"   -F "type=staging"   http://localhost:5000/api/data/upload</pre>
         <p>A successful upload returns
@@ -160,7 +193,7 @@ curl -X POST -F "file=@my_staging.csv"   -F "type=staging"   http://localhost:50
     </div>
 
     <div class="card">
-        <h2>6. Uploads in Docker and on Render</h2>
+        <h2>7. Uploads in Docker and on Render</h2>
         <p>Uploading works in the Docker image: the container runs as a non-root user, but
             <code>/app/data</code> is writable, so the file is validated and stored there.</p>
         <div class="warn">
@@ -174,7 +207,7 @@ curl -X POST -F "file=@my_staging.csv"   -F "type=staging"   http://localhost:50
     </div>
 
     <div class="card">
-        <h2>7. Troubleshooting</h2>
+        <h2>8. Troubleshooting</h2>
         <table>
             <tr><th>Message</th><th>Cause &amp; fix</th></tr>
             <tr><td>Missing columns: …</td>

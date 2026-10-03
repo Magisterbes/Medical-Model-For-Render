@@ -59,9 +59,12 @@
                 aggressiveness). Used to train the stage-by-age model and the Gompertz
                 tumour-growth models.</li>
         </ul>
-        <p>The repository ships with working defaults
-            (<code>data/data_agg_rus.csv</code>, <code>data/data_ind.csv</code>), so you can run
-            the model immediately without uploading anything.</p>
+        <p>The repository ships with a working default dataset — <b>GLOBOCAN 2022,
+            colorectal cancer, United States</b> — so you can run the model immediately without
+            uploading anything. See <i>Appendix A</i> at the bottom of this page for its
+            provenance and citation. The earlier Russian pair
+            (<code>data_agg_rus.csv</code>, <code>data_ind.csv</code>) is still in the data
+            folder and can be selected in the parameter panel.</p>
         <div class="note">
             <b>Delimiter.</b> Both files are semicolon-separated (<code>;</code>), not
             comma-separated, and must contain a header row with the exact column names below.
@@ -231,7 +234,42 @@ curl -X POST -F "file=@my_staging.csv"   -F "type=staging"   http://localhost:50
     </div>
 
     <div class="card">
-        <h2>Appendix: Gompertz model parameters</h2>
+        <h2>Appendix A: the default dataset (GLOBOCAN 2022)</h2>
+        <p>Out of the box the model runs on <b>GLOBOCAN 2022</b> figures for <b>colorectal cancer
+            in the United States of America</b>, both sexes.</p>
+        <table>
+            <tr><th>File</th><th>Content</th><th>Provenance</th></tr>
+            <tr><td><code>globocan_colorectum_usa_agg.csv</code></td>
+                <td>Population, new cases and cancer deaths per single year of age (0–110)</td>
+                <td><b>Real</b> GLOBOCAN figures per five-year age band, expanded to single years</td></tr>
+            <tr><td><code>globocan_colorectum_usa_ind.csv</code></td>
+                <td>Age, stage (I–IV) and aggressiveness for 2 000 patients</td>
+                <td><b>Synthetic</b> — GLOBOCAN publishes no stage or aggressiveness data</td></tr>
+        </table>
+        <p>Totals in the aggregate file: <b>151 162 new cases</b> and <b>52 924 deaths</b> on a
+            population of 334 805 268 — a crude incidence rate of 45.15 per 100 000, which matches
+            the published GLOBOCAN rates (colon 31.43 + rectum 13.72).</p>
+        <div class="note">
+            <b>Citation.</b> Ferlay J, Ervik M, Lam F, Laversanne M, Colombet M, Mery L,
+            Piñeros M, Znaor A, Soerjomataram I, Bray F (2024). <i>Global Cancer Observatory:
+            Cancer Today (version 1.1)</i>. Lyon, France: International Agency for Research on
+            Cancer. https://gco.iarc.who.int/today
+        </div>
+        <div class="warn">
+            <b>The staging file is synthetic.</b> GLOBOCAN publishes incidence and mortality only.
+            The stage and aggressiveness records are drawn from the real incidence-by-age profile
+            using a literature-based stage mix; they demonstrate the workflow and must not be read
+            as registry data.
+        </div>
+        <p class="muted">All-cause mortality (<code>deaths all</code>), which GLOBOCAN does not
+            publish either, is a Makeham–Gompertz pattern calibrated to a US life expectancy of
+            ~77.5 years; the model only uses its shape. Both files can be regenerated with
+            <code>tools/build_globocan_dataset.py</code> and
+            <code>tools/make_synthetic_staging.py</code>.</p>
+    </div>
+
+    <div class="card">
+        <h2>Appendix B: Gompertz model parameters</h2>
         <p>Tumour growth follows the <b>reduced Gompertz</b> model:</p>
 <pre>V(t) = exp(K - exp(C - B * t))      B = exp(log(B_pop) + eps),  eps ~ N(0, B_std^2)</pre>
         <p>where <code>V(t)</code> is tumour size (a proxy for stage) at time <code>t</code> since

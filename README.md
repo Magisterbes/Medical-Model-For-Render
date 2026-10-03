@@ -43,6 +43,39 @@ Render compute plans: **Free / Starter = 512 MB**, **Standard = 2 GB**.
    Image size 1.26 GB → **0.99 GB**.
 7. **Binds to `$PORT`** as required by Render and most PaaS providers.
 
+## Default dataset (GLOBOCAN 2022)
+
+The app ships with **GLOBOCAN 2022 colorectal cancer figures for the United
+States** (both sexes) as its default input:
+
+| File | Content | Provenance |
+|------|---------|------------|
+| `data/globocan_colorectum_usa_agg.csv` | Population, cases and cancer deaths per single year of age (0–110) | **Real** GLOBOCAN figures per five-year band, expanded to single years |
+| `data/globocan_colorectum_usa_ind.csv` | Age, stage and aggressiveness for 2 000 patients | **Synthetic** — GLOBOCAN publishes no stage data |
+
+Totals: **151 162 cases**, **52 924 deaths**, population 334 805 268 — a crude
+incidence rate of 45.15 per 100 000, matching the published GLOBOCAN rates
+(colon 31.43 + rectum 13.72).
+
+> Ferlay J, Ervik M, Lam F, Laversanne M, Colombet M, Mery L, Piñeros M, Znaor A,
+> Soerjomataram I, Bray F (2024). *Global Cancer Observatory: Cancer Today
+> (version 1.1)*. Lyon: International Agency for Research on Cancer.
+> <https://gco.iarc.who.int/today>
+
+`deaths all` (all-cause mortality) is not published by GLOBOCAN either; it is a
+Makeham–Gompertz pattern calibrated to a US life expectancy of ~77.5 years, and
+the model only uses its shape.
+
+Both files are committed, so the app never calls the API at runtime. They can be
+regenerated with:
+
+```bash
+python tools/build_globocan_dataset.py     # fetch + expand the aggregate file
+python tools/make_synthetic_staging.py     # synthesise the staging file
+```
+
+The earlier Russian datasets remain in `data/` and stay selectable in the UI.
+
 ## Safe population per plan
 
 | Plan | RAM | Safe population |

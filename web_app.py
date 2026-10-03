@@ -12,8 +12,10 @@ from flask import Flask, render_template, request, jsonify
 from model.simulation import Simulation
 from model.random import get_random
 from model.memory import (
+    available_memory_bytes,
     check_population,
     describe_limits,
+    effective_cpu_count,
     max_safe_population,
     max_parallel_workers,
 )
@@ -171,6 +173,17 @@ def api_status():
     return jsonify({'running': _sim_running, 'progress': _sim_progress,
                     'has_results': _sim_result is not None})
 
+
+@app.route('/api/limits')
+def api_limits():
+    """Memory/CPU budget of this instance — the UI uses it to clamp inputs."""
+    return jsonify({
+        'memory_limit_mb': round(available_memory_bytes() / 1024 / 1024),
+        'cpus': effective_cpu_count(),
+        'max_population': max_safe_population(),
+        'default_population': DEFAULT_POPULATION,
+    })
+
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, (np.integer,)): return int(obj)
@@ -225,12 +238,15 @@ def api_sensitivity():
     seed = data.get('seed', None)
     factors = data.get('factors', [0.75, 1.0, 1.25])
 
-    guard_error = check_population(population)
-    if guard_error:
-        logger.warning("Rejected sensitivity run: %s", guard_error)
-        return jsonify({'error': guard_error,
-                        'max_population': max_safe_population(),
-                        'limits': describe_limits()}), 400
+    # Sensitivity is exploratory: instead of failing the whole run, reduce the
+    # population to what this instance can afford and tell the user.
+    note = None
+    limit = max_safe_population()
+    if population > limit:
+        note = (f"Population reduced from {int(population):,} to {limit:,} to fit "
+                f"this instance's memory budget.")
+        logger.warning("Sensitivity: %s", note)
+        population = limit
 
     n_jobs = data.get('n_jobs', None)  # None = auto (parallel only for heavy runs)
     if n_jobs is not None:
@@ -261,7 +277,7 @@ def api_sensitivity():
     _sensitivity_result = None
     import threading
     threading.Thread(target=run_sens, daemon=True).start()
-    return jsonify({'status': 'started'})
+    return jsonify({'status': 'started', 'population': population, 'note': note})
 
 @app.route('/api/sensitivity/result')
 def api_sensitivity_result():

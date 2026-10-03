@@ -50,8 +50,31 @@ Render compute plans: **Free / Starter = 512 MB**, **Standard = 2 GB**.
 | Free / Starter | 512 MB | ~150 000 (the guard caps at 189 440) |
 | Standard | 2 GB | ~1 000 000 |
 
-The limit is auto-detected from the cgroup. For testing (or for platforms that
-do not expose cgroups) set `MEMORY_LIMIT_BYTES` and/or `CPU_QUOTA`.
+The limit is resolved in this order:
+
+1. `MEMORY_LIMIT_BYTES` (explicit — recommended on PaaS),
+2. the container's cgroup v2 / v1 limit,
+3. **512 MB assumed** if neither is available.
+
+There is deliberately no "unlimited" fallback: if the limit cannot be read the
+app assumes the smallest tier, because running without a budget means the guard
+and the worker cap are both disabled. (Exactly that happened once: with the
+cgroup unreadable, `os.cpu_count()` reported the *host's* cores, the sensitivity
+analysis spawned five worker processes and Render restarted the service for
+exceeding its memory limit.)
+
+### Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MEMORY_LIMIT_BYTES` | auto / 512 MB | Instance memory budget |
+| `CPU_QUOTA` | auto | Number of CPUs the instance may use |
+| `SIM_MAX_WORKERS` | auto | Hard cap on sensitivity worker processes |
+| `DEFAULT_POPULATION` | 20000 | Population pre-filled in the UI |
+
+Sensitivity runs are **clamped** (not rejected) to the safe population, and the
+UI reports the reduction. A normal `/api/simulate` request that is too large is
+rejected with HTTP 400 and a message explaining the limit.
 
 ## Deploy on Render
 

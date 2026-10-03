@@ -10,3 +10,10 @@ services:
       # Default population offered by the UI (kept small for 512 MB instances)
       - key: DEFAULT_POPULATION
         value: "20000"
+      # Explicit memory budget for the free plan. Raise it (or remove the var to
+      # rely on cgroup detection) after upgrading to a bigger instance.
+      - key: MEMORY_LIMIT_BYTES
+        value: "536870912"
+      # Extra safety net: never run more than one simulation worker process
+      - key: SIM_MAX_WORKERS
+        value: "1"

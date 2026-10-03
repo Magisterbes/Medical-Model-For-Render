@@ -27,6 +27,14 @@ BASELINE_BYTES = 210 * 1024 * 1024            # imports + Flask + interpreter
 BYTES_PER_AGENT = 1.2 * 1024                  # ~1.2 KB per agent at peak
 SAFETY_RESERVE_BYTES = 80 * 1024 * 1024       # allocator/socket/stack headroom
 
+# If no cgroup limit can be read (some PaaS hide /sys/fs/cgroup from the app),
+# assume the smallest common tier instead of running unprotected. "No limit"
+# would disable both the population guard and the parallelism cap — that is
+# exactly what caused an OOM restart on Render, where 5 worker processes were
+# spawned because os.cpu_count() reported the host's cores. Override with
+# MEMORY_LIMIT_BYTES.
+ASSUMED_MEMORY_BYTES = 512 * 1024 * 1024
+
 # Values above this are treated as "no limit" (cgroup v1 reports a huge number)
 _UNLIMITED = 1 << 60
 
@@ -56,11 +64,17 @@ def _read_int(path: str) -> Optional[int]:
     return value
 
 
-def available_memory_bytes() -> Optional[int]:
-    """Container memory limit in bytes, or ``None`` if it cannot be detected.
+_warned_unknown = False
 
-    ``None`` means "unknown" (e.g. local Windows development), in which case no
-    clamping is applied.
+
+def available_memory_bytes() -> int:
+    """Memory budget of this instance in bytes.
+
+    Order of precedence:
+
+    1. the ``MEMORY_LIMIT_BYTES`` environment variable,
+    2. the container's cgroup v2 / v1 limit,
+    3. ``ASSUMED_MEMORY_BYTES`` (512 MB) — never run without a budget.
     """
     env = os.environ.get('MEMORY_LIMIT_BYTES')
     if env:
@@ -75,7 +89,16 @@ def available_memory_bytes() -> Optional[int]:
         value = _read_int(path)
         if value is not None:
             return value
-    return None
+
+    global _warned_unknown
+    if not _warned_unknown:
+        _warned_unknown = True
+        logger.warning(
+            "No container memory limit detected (cgroup not readable); assuming "
+            "%.0f MB. Set MEMORY_LIMIT_BYTES to match your instance plan.",
+            ASSUMED_MEMORY_BYTES / 1024 / 1024,
+        )
+    return ASSUMED_MEMORY_BYTES
 
 
 def effective_cpu_count() -> int:
@@ -113,48 +136,53 @@ def effective_cpu_count() -> int:
     return os.cpu_count() or 1
 
 
-def memory_budget_bytes() -> Optional[int]:
+def memory_budget_bytes() -> int:
     """Bytes available for agent data (limit − baseline − reserve)."""
-    limit = available_memory_bytes()
-    if limit is None:
-        return None
-    return max(0, limit - BASELINE_BYTES - SAFETY_RESERVE_BYTES)
+    return max(0, available_memory_bytes() - BASELINE_BYTES - SAFETY_RESERVE_BYTES)
 
 
-def max_safe_population() -> Optional[int]:
-    """Largest population that fits the container, or ``None`` if unknown."""
-    budget = memory_budget_bytes()
-    if budget is None:
-        return None
-    return max(1_000, int(budget / BYTES_PER_AGENT))
+def max_safe_population() -> int:
+    """Largest population that fits the instance."""
+    return max(1_000, int(memory_budget_bytes() / BYTES_PER_AGENT))
 
 
 def max_parallel_workers(population: int) -> int:
     """How many worker processes a sensitivity run of this size may use.
 
-    Each worker is a full Python process (~``BASELINE_BYTES``) plus its own
-    copy of the population, so parallelism is bounded by memory as well as by
-    the CPU quota.
+    Each worker is a full Python process (~``BASELINE_BYTES``) with its own copy
+    of the population, so parallelism is bounded by memory as well as by the CPU
+    quota. ``os.cpu_count()`` is deliberately never used as a fallback: inside a
+    container it reports *host* cores — dozens on a "less than 1 CPU" plan —
+    which would spawn far too many processes and OOM the instance.
     """
     cpus = effective_cpu_count()
-    limit = available_memory_bytes()
-    if limit is None:
-        return cpus
     per_worker = BASELINE_BYTES + int(population) * BYTES_PER_AGENT
-    usable = max(0, limit - SAFETY_RESERVE_BYTES)
+    # The parent process keeps its own baseline (it holds the fitted parameters
+    # and drives the run), so it must be subtracted as well — otherwise a tiny
+    # population would "fit" many workers and still OOM the instance.
+    usable = max(0, available_memory_bytes() - SAFETY_RESERVE_BYTES - BASELINE_BYTES)
     by_memory = int(usable // max(per_worker, 1))
-    return max(1, min(cpus, by_memory))
+
+    hard_cap = None
+    env = os.environ.get('SIM_MAX_WORKERS')
+    if env:
+        try:
+            hard_cap = max(1, int(env))
+        except ValueError:
+            logger.warning("Ignoring invalid SIM_MAX_WORKERS=%r", env)
+
+    limit = min(cpus, by_memory)
+    if hard_cap is not None:
+        limit = min(limit, hard_cap)
+    return max(1, limit)
 
 
 def describe_limits() -> str:
     """Human-readable summary for logs and error messages."""
-    limit = available_memory_bytes()
-    if limit is None:
-        return (f"memory limit: unknown (no cgroup); cpus={effective_cpu_count()}; "
-                f"no population cap applied")
-    return (f"memory limit: {limit / 1024 / 1024:.0f} MB; "
+    return (f"memory limit: {available_memory_bytes() / 1024 / 1024:.0f} MB; "
             f"cpus={effective_cpu_count()}; "
-            f"max population: {max_safe_population():,}")
+            f"max population: {max_safe_population():,}; "
+            f"max workers: {max_parallel_workers(1_000)}")
 
 
 def check_population(requested: int) -> Optional[str]:

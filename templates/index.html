@@ -78,7 +78,7 @@
 
 <div class="container">
     <div class="controls">
-        <div><label>Population:</label><input type="number" id="population" value="20000" min="1000" max="1000000" step="5000" style="width:110px"></div>
+        <div><label>Population:</label><input type="number" id="population" value="20000" min="1000" max="1000000" step="5000" style="width:110px"><div class="status" id="pop-limit" style="margin-left:0"></div></div>
         <div><label>Years:</label><input type="number" id="years" value="30" min="5" max="60" style="width:80px"></div>
         <div><label>Seed:</label><input type="number" id="seed" placeholder="auto" style="width:100px"></div>
         <button class="btn btn-success" id="btn-fit" onclick="runFit()">🔧 Fit + Simulate</button>
@@ -157,6 +157,17 @@ function toggleParams(){
 function runSimulation(){ startRun({ population: document.getElementById('population').value, seed: getSeed(), fit: false }); }
 function runFit(){ startRun({ population: document.getElementById('population').value, seed: getSeed(), fit: true }); }
 function getSeed(){ return document.getElementById('seed').value || null; }
+
+function loadLimits(){
+    fetch('/api/limits').then(r=>r.json()).then(d=>{
+        if(!d||!d.max_population)return;
+        const inp=document.getElementById('population');
+        inp.max=d.max_population;
+        if(parseInt(inp.value,10)>d.max_population)inp.value=d.max_population;
+        const el=document.getElementById('pop-limit');
+        if(el)el.textContent='max '+Number(d.max_population).toLocaleString()+' agents on this instance ('+d.memory_limit_mb+' MB)';
+    }).catch(()=>{});
+}
 
 function startRun(params){
     setButtons(false);
@@ -288,12 +299,14 @@ function gatherOverrideParams(){
 
 // --- Sensitivity Analysis ---
 function runSensitivity(){
-    const pop=document.getElementById('population').value;
+    const pop=parseInt(document.getElementById('population').value,10)||20000;
+    const yrs=parseInt(document.getElementById('years').value,10)||30;
     setButtons(false); setStatus('Running sensitivity analysis...', true);
     fetch('/api/sensitivity',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({population:Math.max(Math.min(pop,300000),50000),years:30,seed:getSeed(),factors:[0.5,0.75,1.0,1.25,1.5]})})
+        body:JSON.stringify({population:pop,years:yrs,seed:getSeed(),factors:[0.5,0.75,1.0,1.25,1.5]})})
         .then(r=>r.json()).then(data=>{
             if(data.error){setStatus('Error: '+data.error,false);setButtons(true);return;}
+            if(data.note) setStatus(data.note,false);
             pollingInterval=setInterval(pollSensitivity,1000);
         }).catch(err=>{setStatus('Connection error',false);setButtons(true);});
 }
@@ -400,6 +413,9 @@ function setStatus(msg,showProgress){
     if(showProgress)document.getElementById('progress-bar').style.display='block';
     else setTimeout(()=>document.getElementById('progress-bar').style.display='none',2000);
 }
+
+// Show the instance's memory budget and clamp the population field on load
+loadLimits();
 </script>
 </body>
 </html>

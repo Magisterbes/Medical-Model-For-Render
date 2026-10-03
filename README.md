@@ -85,6 +85,17 @@ rejected with HTTP 400 and a message explaining the limit.
 
 Render injects `PORT`; the container binds to it automatically.
 
+## In-app guide
+
+The app ships a self-contained reference page at **`/guide`** (linked from the
+header) covering:
+
+- the exact CSV format of the aggregate and staging datasets, with examples,
+- a from-scratch walkthrough: upload → select → fit → simulate → sensitivity,
+- uploading over the REST API (`curl` examples),
+- Docker/Render caveats (uploads are ephemeral on the free plan) and a
+  troubleshooting table of every validation message.
+
 ## Local development
 
 ```bash

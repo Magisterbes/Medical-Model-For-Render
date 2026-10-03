@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data format &amp; getting started — Cancer Screening Microsimulation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+               background: #f0f2f5; color: #333; line-height: 1.55; }
+        .header { background: linear-gradient(135deg, #1a237e, #283593); color: white;
+                  padding: 20px 40px; display: flex; justify-content: space-between;
+                  align-items: center; flex-wrap: wrap; gap: 10px; }
+        .header h1 { font-size: 1.4em; font-weight: 600; }
+        .header a { color: #fff; opacity: 0.9; text-decoration: none; font-weight: 600;
+                    border: 1px solid rgba(255,255,255,0.5); border-radius: 6px; padding: 6px 14px; }
+        .header a:hover { opacity: 1; background: rgba(255,255,255,0.12); }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        .card { background: white; border-radius: 8px; padding: 22px 26px; margin-bottom: 20px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { color: #1a237e; font-size: 1.15em; margin-bottom: 12px; }
+        p { margin: 8px 0; }
+        ul, ol { margin: 8px 0 8px 22px; }
+        li { margin: 5px 0; }
+        code { background: #f3f4f8; padding: 2px 6px; border-radius: 4px;
+               font-family: Consolas, 'Courier New', monospace; font-size: 0.88em; }
+        pre { background: #1e2233; color: #e8eaf6; padding: 14px 16px; border-radius: 6px;
+              overflow-x: auto; font-family: Consolas, 'Courier New', monospace;
+              font-size: 0.85em; line-height: 1.5; margin: 10px 0; }
+        table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 0.9em; }
+        th, td { border: 1px solid #e0e0e0; padding: 7px 10px; text-align: left;
+                 vertical-align: top; }
+        th { background: #f5f7ff; color: #1a237e; font-weight: 600; }
+        .note { border-left: 4px solid #f9a825; background: #fffde7; padding: 10px 14px;
+                border-radius: 0 6px 6px 0; margin: 12px 0; }
+        .warn { border-left: 4px solid #c62828; background: #ffebee; padding: 10px 14px;
+                border-radius: 0 6px 6px 0; margin: 12px 0; }
+        .ok { border-left: 4px solid #2e7d32; background: #e8f5e9; padding: 10px 14px;
+              border-radius: 0 6px 6px 0; margin: 12px 0; }
+        .muted { color: #777; font-size: 0.88em; }
+    </style>
+</head>
+<body>
+<div class="header">
+    <h1>📖 Data format &amp; getting started</h1>
+    <a href="/">← Back to the model</a>
+</div>
+
+<div class="container">
+
+    <div class="card">
+        <h2>1. What the model needs</h2>
+        <p>The simulation is driven by two CSV datasets:</p>
+        <ul>
+            <li><b>Aggregate incidence &amp; mortality data</b> — age-specific population, cancer
+                cases and deaths. Used to build the initial age distribution and the natural
+                mortality, and to <b>fit</b> the diagnosis and cancer-death hazards.</li>
+            <li><b>Individual staging data</b> — one row per diagnosed patient (age, stage,
+                aggressiveness). Used to train the stage-by-age model and the Gompertz
+                tumour-growth models.</li>
+        </ul>
+        <p>The repository ships with working defaults
+            (<code>data/data_agg_rus.csv</code>, <code>data/data_ind.csv</code>), so you can run
+            the model immediately without uploading anything.</p>
+        <div class="note">
+            <b>Delimiter.</b> Both files are semicolon-separated (<code>;</code>), not
+            comma-separated, and must contain a header row with the exact column names below.
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>2. Aggregate file format</h2>
+        <p>Default name: <code>data_agg_rus.csv</code>. One row per single year of age.</p>
+        <table>
+            <tr><th>Column</th><th>Type</th><th>Range</th><th>Meaning</th></tr>
+            <tr><td><code>Age</code></td><td>integer</td><td>0 – 110</td>
+                <td>Single year of age</td></tr>
+            <tr><td><code>population</code></td><td>number</td><td>≥ 0</td>
+                <td>Population at that age. Any scale is fine — it is normalised into the
+                    initial age distribution.</td></tr>
+            <tr><td><code>cases</code></td><td>number</td><td>≥ 0</td>
+                <td>New cancer cases at that age (fits the diagnosis hazard).</td></tr>
+            <tr><td><code>deaths cancer</code></td><td>number</td><td>≥ 0</td>
+                <td>Cancer deaths at that age (fits the cancer-death hazard).</td></tr>
+            <tr><td><code>deaths all</code></td><td>number</td><td>≥ 0</td>
+                <td>All-cause deaths at that age (natural-mortality distribution).</td></tr>
+        </table>
+<pre>Age;population;cases;deaths cancer;deaths all
+0;239124.7967;0;0;8860.25
+1;239124.7967;0;0;720
+2;239124.7967;0;0;400
+...
+110;1234.5;12;9;400</pre>
+        <p class="muted">Requirements: at least one row for every age you care about (0–110 is
+            expected). Column names are matched exactly, including spaces.</p>
+    </div>
+
+    <div class="card">
+        <h2>3. Staging file format</h2>
+        <p>Default name: <code>data_ind.csv</code>. One row per diagnosed patient.</p>
+        <table>
+            <tr><th>Column</th><th>Type</th><th>Range</th><th>Meaning</th></tr>
+            <tr><td><code>Age</code></td><td>integer</td><td>0 – 110</td>
+                <td>Age at diagnosis</td></tr>
+            <tr><td><code>Stage</code></td><td>integer</td><td>1 – 4</td>
+                <td>Clinical stage at diagnosis (I–IV)</td></tr>
+            <tr><td><code>Aggressiveness</code></td><td>integer</td><td>0 or 1</td>
+                <td>0 = non-aggressive, 1 = aggressive</td></tr>
+        </table>
+<pre>Age;Stage;Aggressiveness
+70;4;1
+47;4;1
+67;3;1
+...
+58;1;0</pre>
+        <p class="muted">All four stages and both aggressiveness values should be present, otherwise
+            the fitted models are extrapolating from a narrow sample.</p>
+    </div>
+
+    <div class="card">
+        <h2>4. From scratch: upload → fit → simulate</h2>
+        <ol>
+            <li><b>Prepare the two CSV files</b> as described above, with exact header names.</li>
+            <li><b>Open the app</b> and expand <b>⚙ Parameters</b>.</li>
+            <li><b>Upload.</b> In the <b>Upload CSV</b> box choose the file, pick
+                <i>Aggr</i> or <i>Stage</i> next to it, and click <b>Upload</b>. The status line
+                reports the validation result (row count, or the exact problem).</li>
+            <li><b>Select.</b> In the <b>Data Files</b> box choose your uploaded file under
+                <i>Aggregate data</i> and your staging file under <i>Staging data</i>.
+                Leaving <i>(default from config)</i> keeps the built-in datasets.</li>
+            <li><b>Set the run size.</b> Population, Years and (optionally) Seed. Note the hint
+                under the Population field — it shows the maximum this instance can handle.</li>
+            <li><b>Run.</b> <b>🔧 Fit + Simulate</b> calibrates the parameters on your data and then
+                simulates; <b>▶ Run Only</b> simulates with the current parameters. Charts and
+                summary cards appear below once the progress bar completes.</li>
+            <li><b>Export (optional).</b> <b>💾 Save</b> / <b>📂 Load</b> store and restore the
+                parameter set as JSON.</li>
+            <li><b>Sensitivity (optional).</b> <b>📊 Sensitivity</b> re-runs the model for a range of
+                lead-time multipliers and plots how the results move.</li>
+        </ol>
+        <div class="ok">
+            <b>Fastest sanity check.</b> Upload both files → select them → <b>▶ Run Only</b> with a
+            small population (e.g. 20 000). If that works, run <b>🔧 Fit + Simulate</b>.
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>5. Uploading over the API (optional)</h2>
+<pre>curl -X POST -F "file=@my_aggregate.csv" -F "type=aggregate" http://localhost:5000/api/data/upload
+curl -X POST -F "file=@my_staging.csv"   -F "type=staging"   http://localhost:5000/api/data/upload</pre>
+        <p>A successful upload returns
+            <code>{"status":"ok","filename":"...","validation":"OK (N rows)"}</code>.
+            Invalid files are rejected with a message and are <b>not</b> stored. Then run with the
+            uploaded files selected:</p>
+<pre>curl -X POST http://localhost:5000/api/simulate \
+     -H "Content-Type: application/json" \
+     -d '{"population":20000,"seed":42,"fit":true,
+          "override_params":{"train_data_filename":"my_aggregate.csv",
+                             "train_staging_data_filename":"my_staging.csv"}}'</pre>
+    </div>
+
+    <div class="card">
+        <h2>6. Uploads in Docker and on Render</h2>
+        <p>Uploading works in the Docker image: the container runs as a non-root user, but
+            <code>/app/data</code> is writable, so the file is validated and stored there.</p>
+        <div class="warn">
+            <b>Hosted deployments are ephemeral.</b> On Render's free plan there is no persistent
+            disk, so an uploaded file is <b>lost</b> when the service restarts, redeploys or spins
+            down after inactivity. Re-upload after a restart, or attach a disk on a paid plan.
+            The built-in datasets are baked into the image and always survive.
+        </div>
+        <p>A file is stored under its original name; uploading the same name again overwrites it.
+            The file only affects a run when it is selected in the <i>Data Files</i> dropdowns.</p>
+    </div>
+
+    <div class="card">
+        <h2>7. Troubleshooting</h2>
+        <table>
+            <tr><th>Message</th><th>Cause &amp; fix</th></tr>
+            <tr><td>Missing columns: …</td>
+                <td>The header row lacks the exact names. Check the delimiter (<code>;</code>) and
+                    that you picked the right type (Aggr vs Stage).</td></tr>
+            <tr><td>Column 'X' must be numeric</td>
+                <td>A value contains text or a decimal comma — use <code>.</code> as the decimal
+                    separator.</td></tr>
+            <tr><td>Column 'Stage' must be 1-4</td>
+                <td>Stages outside I–IV are not supported.</td></tr>
+            <tr><td>Column 'Aggressiveness' must be 0 or 1</td>
+                <td>Only 0 (non-aggressive) and 1 (aggressive) are accepted.</td></tr>
+            <tr><td>Age values must be between 0 and 110</td>
+                <td>The model simulates ages 0–110 only.</td></tr>
+            <tr><td>Only .csv files allowed</td>
+                <td>Rename the file or export it as CSV.</td></tr>
+            <tr><td>Requested population … exceeds this instance's safe limit</td>
+                <td>Not enough RAM for that run. Lower the population or use a larger plan; the
+                    limit is shown under the Population field.</td></tr>
+        </table>
+    </div>
+
+    <p class="muted" style="text-align:center;margin:24px 0">
+        MedicalModel2024 — academic use. Based on
+        <a href="https://github.com/Magisterbes/BespalovPhd">Magisterbes/BespalovPhd</a>.
+    </p>
+</div>
+</body>
+</html>

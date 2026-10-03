@@ -102,6 +102,12 @@ def _validate_staging_csv(filepath: str) -> tuple[bool, str]:
 def index():
     return render_template('index.html')
 
+
+@app.route('/guide')
+def guide():
+    """Static reference page: data file formats and a getting-started walkthrough."""
+    return render_template('guide.html')
+
 @app.route('/api/simulate', methods=['POST'])
 def api_simulate():
     global _sim_thread, _sim_running, _sim_result, _sim_instance, _sim_progress

@@ -1,11 +1,29 @@
-"""Flask web UI for MedicalModel2024 microsimulation."""
-import json, os, sys, threading, numpy as np
+"""Flask web UI for MedicalModel2024 — Render-lite build.
+
+This variant targets small hosting tiers (e.g. Render's 512 MB free plan):
+it enforces a memory budget, ships conservative defaults and imports the heavy
+optional libraries lazily.
+"""
+import json, logging, os, sys, threading, numpy as np
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from flask import Flask, render_template, request, jsonify
 from model.simulation import Simulation
 from model.random import get_random
+from model.memory import (
+    check_population,
+    describe_limits,
+    max_safe_population,
+    max_parallel_workers,
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%H:%M:%S',
+)
+logger = logging.getLogger('web_app')
 
 app = Flask(__name__)
 _sim_instance = None
@@ -19,10 +37,19 @@ FITTED_PARAMS_FILE = "config/params_fitted.json"
 DATA_DIR = "data"
 ALLOWED_EXTENSIONS = {'csv'}
 
-import pandas as pd
+# Defaults tuned for a 512 MB instance — see model/memory.py for the budget.
+DEFAULT_POPULATION = int(os.environ.get('DEFAULT_POPULATION', 20000))
+
+
+def _pandas():
+    """Import pandas lazily — ~33 MB of RSS, only needed for CSV handling."""
+    import pandas as pd
+    return pd
+
 
 def _validate_aggregate_csv(filepath: str) -> tuple[bool, str]:
     """Validate aggregate CSV has required columns and valid data."""
+    pd = _pandas()
     try:
         df = pd.read_csv(filepath, sep=';')
     except Exception as e:
@@ -46,6 +73,7 @@ def _validate_aggregate_csv(filepath: str) -> tuple[bool, str]:
 
 def _validate_staging_csv(filepath: str) -> tuple[bool, str]:
     """Validate staging CSV has required columns and valid data."""
+    pd = _pandas()
     try:
         df = pd.read_csv(filepath, sep=';')
     except Exception as e:
@@ -83,7 +111,17 @@ def api_simulate():
     population = data.get('population', None)
     do_fit = data.get('fit', False)
     override_params = data.get('override_params', None)
-    
+
+    if population in (None, ''):
+        population = DEFAULT_POPULATION
+    population = int(population)
+    guard_error = check_population(population)
+    if guard_error:
+        logger.warning("Rejected simulation: %s", guard_error)
+        return jsonify({'error': guard_error,
+                        'max_population': max_safe_population(),
+                        'limits': describe_limits()}), 400
+
     _sim_running = True
     _sim_progress = 0
     _sim_result = None
@@ -113,6 +151,9 @@ def api_simulate():
             _sim_progress = 98
             _sim_result = {'summary': _sim_instance.get_summary(),
                            'stats': _sim_instance.stats.to_dict()}
+            # Release the agent arrays — they are the bulk of the memory and are
+            # not needed once the summary and stats have been collected.
+            _sim_instance.population = None
             _sim_progress = 100
         except Exception as e:
             import traceback
@@ -178,15 +219,28 @@ def api_sensitivity():
     global _sim_running
     if _sim_running:
         return jsonify({'error': 'Simulation already running'}), 409
-    _sim_running = True
     data = request.get_json() or {}
-    population = int(data.get('population', 300000))
+    population = int(data.get('population', 30000))
     years = int(data.get('years', 15))
     seed = data.get('seed', None)
-    factors = data.get('factors', [0.5, 0.75, 1.0, 1.25, 1.5])
+    factors = data.get('factors', [0.75, 1.0, 1.25])
+
+    guard_error = check_population(population)
+    if guard_error:
+        logger.warning("Rejected sensitivity run: %s", guard_error)
+        return jsonify({'error': guard_error,
+                        'max_population': max_safe_population(),
+                        'limits': describe_limits()}), 400
+
     n_jobs = data.get('n_jobs', None)  # None = auto (parallel only for heavy runs)
     if n_jobs is not None:
         n_jobs = int(n_jobs)
+    # Bound parallelism by the container's CPU quota *and* memory budget — each
+    # worker is a full process with its own copy of the population.
+    worker_cap = max_parallel_workers(population)
+    n_jobs = worker_cap if (n_jobs is None or n_jobs > worker_cap) else max(1, n_jobs)
+
+    _sim_running = True
 
     def run_sens():
         global _sim_running
@@ -377,12 +431,14 @@ def _apply_overrides(p, data):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--host', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=5000)
+    # Hosting platforms (Render, Heroku, ...) inject the port to bind via $PORT.
+    parser.add_argument('--host', default=os.environ.get('HOST', '127.0.0.1'))
+    parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', '5000')))
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
+    logger.info("Instance limits: %s", describe_limits())
     print(f"MedicalModel2024 at http://{args.host}:{args.port}")
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 if __name__ == '__main__':
     main()

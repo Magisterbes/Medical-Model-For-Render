@@ -3,7 +3,7 @@
 
 [simulation]
 years_to_simulate = 30
-init_population = 100000
+init_population = 20000
 unreal_life_length = 110
 
 [data]

@@ -18,7 +18,6 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
-from scipy.signal import savgol_filter
 
 from .simulation import Simulation
 from .random import get_random
@@ -257,7 +256,9 @@ def run_sensitivity_analysis(
     dt = time.perf_counter() - t0
     logger.info(f"Sensitivity analysis complete in {dt:.1f}s.")
 
-    # Smooth rate curves with Savitzky-Golay filter for cleaner visualization
+    # Smooth rate curves with Savitzky-Golay filter for cleaner visualization.
+    # scipy.signal is imported here so SciPy is not pulled in at app start-up.
+    from scipy.signal import savgol_filter
     for key in _SMOOTH_KEYS:
         if key in all_agg_stats and len(all_agg_stats[key]) > 0:
             win = min(11, len(all_agg_stats[key][0]) - 2)

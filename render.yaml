@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: medicalmodel2024-lite
+    runtime: docker
+    plan: free
+    region: frankfurt
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      # Default population offered by the UI (kept small for 512 MB instances)
+      - key: DEFAULT_POPULATION
+        value: "20000"

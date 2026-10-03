@@ -1,46 +1,98 @@
-# MedicalModel2024 Python — Cancer Screening Microsimulation
+# MedicalModel2024 — Render-lite build
 
-Agent-based microsimulation for evaluating cancer screening programmes.  
-**Language:** Python 3.11+ | **UI:** Flask + Plotly.js | **Backend:** NumPy + Numba + scikit-learn
+A memory-conscious variant of the
+[base MedicalModelPython app](https://github.com/Magisterbes/MedicalModelPython)
+that fits small hosting tiers such as **Render's 512 MB free plan**.
 
-## Quick Start
+The simulation core is unchanged: with the same seed and population this build
+produces **byte-for-byte identical results**. What differs is the runtime
+budget policy, the defaults and the Docker packaging.
+
+## Why a separate build?
+
+A 1M-agent simulation needs ~1.3 GB of RAM, and the base app keeps ~200 MB
+resident before it even starts simulating:
+
+| Population | Peak RSS |
+|-----------:|---------:|
+| — (imports only) | 201 MB |
+| 50 000 | 303 MB |
+| 100 000 | 354 MB |
+| 300 000 | 564 MB |
+| 1 000 000 | 1 294 MB |
+
+Render compute plans: **Free / Starter = 512 MB**, **Standard = 2 GB**.
+
+## What this build does differently
+
+1. **Memory guard** (`model/memory.py`) — reads the container's cgroup v2/v1
+   memory limit and rejects oversized requests with a clear **HTTP 400**
+   instead of letting the platform OOM-kill the process.
+2. **cgroup-aware parallelism** — the sensitivity analysis bounds its worker
+   count by the CPU quota *and* the memory budget, never by `os.cpu_count()`
+   (which reports *host* cores inside a container and would spawn far too many
+   processes).
+3. **Conservative defaults** — 20 000 agents in the UI; sensitivity uses
+   30 000 agents / 3 factors. Override with `DEFAULT_POPULATION`.
+4. **Lazy imports** — scikit-learn, pandas and scipy load only when actually
+   needed. The idle footprint drops from ~290 MB to **~55 MB**, which matters
+   because free instances spin down and cold-start often.
+5. **Releases the population** after a run, keeping only the summary and stats.
+6. **Slimmer image** — `matplotlib`, `plotly`, `tqdm` and `optuna` removed
+   (unused on the server; the browser loads Plotly from a CDN).
+   Image size 1.26 GB → **0.99 GB**.
+7. **Binds to `$PORT`** as required by Render and most PaaS providers.
+
+## Safe population per plan
+
+| Plan | RAM | Safe population |
+|------|-----|-----------------|
+| Free / Starter | 512 MB | ~150 000 (the guard caps at 189 440) |
+| Standard | 2 GB | ~1 000 000 |
+
+The limit is auto-detected from the cgroup. For testing (or for platforms that
+do not expose cgroups) set `MEMORY_LIMIT_BYTES` and/or `CPU_QUOTA`.
+
+## Deploy on Render
+
+1. **New → Web Service**, connect this repository.
+2. Language **Docker**, Branch **main**, Plan **Free**.
+3. Health Check Path **`/api/status`**.
+4. Or import the included `render.yaml` blueprint.
+
+Render injects `PORT`; the container binds to it automatically.
+
+## Local development
 
 ```bash
 pip install -r requirements.txt
-
-# CLI: run with 50K agents
-python run_simulation.py --population 50000 --seed 42
-
-# CLI: run with calibration (Fit + Simulate)
-python run_simulation.py --population 100000 --fit --seed 12345
-
-# Web UI (interactive charts, parameter editor, sensitivity analysis)
-python web_app.py
-# → Open http://127.0.0.1:5000
+python web_app.py                            # → http://127.0.0.1:5000
+python run_simulation.py --population 20000 --seed 42
 ```
 
-## Docker
+Reproduce the 512 MB production budget locally:
 
 ```bash
-# Build the image
-docker build -t medicalmodel2024:latest .
-
-# Run the web UI → http://localhost:5000
-docker run --rm -p 5000:5000 --name medicalmodel2024 medicalmodel2024:latest
-
-# …or use Docker Compose (persists output/, config/ and data/ on the host)
+docker build -t medicalmodel2024-render .
+docker run --rm --memory=512m -p 5000:5000 medicalmodel2024-render
+# or, using the compose file (which sets mem_limit: 512m):
 docker compose up --build
 ```
 
-The image runs the Flask UI on port 5000 under a non-root user, ships with a
-health check at `/api/status`, pre-warms the Numba JIT cache at build time, and
-installs a proper init (`tini`) for clean signal handling.
+## Notes
 
-> **Note:** `requirements.txt` uses lower bounds only, so a rebuilt image may
-> resolve newer library versions than your local environment. Results stay
-> numerically equivalent, but re-running with a different NumPy/Numba version
-> can shift the random stream very slightly (a handful of agents out of
-> millions). Pin exact versions if you need bit-for-bit reproducibility.
+- Free instances have **no persistent disk**: uploaded CSVs and saved parameter
+  files are lost on redeploy.
+- Free instances spin down after inactivity, so the first request after a pause
+  pays a cold start (Python import + Numba cache load, a few seconds).
+- The web app keeps run state in module-level globals, so it must stay a single
+  process (no multi-worker WSGI server).
+
+## License
+
+Academic use. See the original C# repository:
+[Magisterbes/BespalovPhd](https://github.com/Magisterbes/BespalovPhd)
+
 
 ## What the Model Does
 

@@ -6,18 +6,23 @@ Uses TOML for configuration instead of the custom key:value parser.
 Supports type-safe access via dataclass fields and automatic data loading.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Any
 from pathlib import Path
 import logging
 
 import numpy as np
-import pandas as pd
 
 from .distribution import Distribution, risks_to_distribution
 from .hazard import Hazard, parse_hazard
 from .gompertz import GompertzModel
-from sklearn.linear_model import LogisticRegression
+
+# NOTE: pandas and scikit-learn are imported lazily (see _init_frames and
+# _get_model) — together they cost ~110 MB of RSS, which matters on small
+# hosting tiers. `from __future__ import annotations` keeps the `pd.DataFrame`
+# type hints working without importing pandas at module load.
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +308,8 @@ class Parameters:
         
         Equivalent to C# Parameters.InitFrames().
         """
+        import pandas as pd  # lazy: ~33 MB of RSS
+
         train_file = data_path / self.train_data_filename
         logger.info(f"Loading aggregate data: {train_file}")
         
@@ -386,6 +393,8 @@ class Parameters:
         
         Equivalent to C# Parameters.LoadStagingTrainData().
         """
+        import pandas as pd  # lazy: ~33 MB of RSS
+
         staging_file = data_path / self.train_staging_data_filename
         logger.info(f"Loading staging data: {staging_file}")
         
@@ -422,7 +431,9 @@ class Parameters:
         
         train_X = np.array([_get_age_group_vector(a) for a in ages])
         
-        # Train sklearn multinomial logistic regression (L-BFGS, fast ~0.1s)
+        # Train sklearn multinomial logistic regression (L-BFGS, fast ~0.1s).
+        # Imported here so scikit-learn (~76 MB of RSS) is not loaded at start-up.
+        from sklearn.linear_model import LogisticRegression
         model = LogisticRegression(solver='lbfgs', C=1.0, max_iter=1000, random_state=42)
         model.fit(train_X, stages - 1)
         

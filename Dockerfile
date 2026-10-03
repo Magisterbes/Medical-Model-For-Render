@@ -1,15 +1,19 @@
 # syntax=docker/dockerfile:1
-# MedicalModel2024 — Cancer Screening Microsimulation (Flask web UI)
+# MedicalModel2024 — Render-lite build
 #
-# Build:   docker build -t medicalmodel2024:latest .
-# Run:     docker run --rm -p 5000:5000 --name medicalmodel2024 medicalmodel2024:latest
-# Compose: docker compose up --build
+# A memory-conscious variant of the Flask web UI for small hosting tiers
+# (e.g. Render's 512 MB free plan). See README.md for the safe population
+# range and the differences from the base project.
+#
+# Build:   docker build -t medicalmodel2024-render:latest .
+# Run:     docker run --rm -p 5000:5000 --name medicalmodel2024-render medicalmodel2024-render:latest
+# 512 MB test: docker run --rm --memory=512m -p 5000:5000 medicalmodel2024-render:latest
 
 FROM python:3.11-slim
 
-LABEL org.opencontainers.image.title="MedicalModel2024" \
-      org.opencontainers.image.description="Cancer screening microsimulation — Flask web UI on top of a Numba-accelerated agent-based model" \
-      org.opencontainers.image.source="https://github.com/Magisterbes/MedicalModelPython" \
+LABEL org.opencontainers.image.title="MedicalModel2024 (Render-lite)" \
+      org.opencontainers.image.description="Memory-conscious cancer screening microsimulation — Flask web UI on a Numba-accelerated agent-based model" \
+      org.opencontainers.image.source="https://github.com/Magisterbes/Medical-Model-For-Render" \
       org.opencontainers.image.licenses="Academic use"
 
 # --- Runtime environment ------------------------------------------------------
@@ -21,7 +25,8 @@ ENV PYTHONUNBUFFERED=1 \
     NUMBA_CACHE_DIR=/app/.numba_cache \
     FLASK_APP=web_app.py \
     HOST=0.0.0.0 \
-    PORT=5000
+    PORT=5000 \
+    DEFAULT_POPULATION=20000
 
 WORKDIR /app
 
@@ -59,12 +64,15 @@ USER appuser
 EXPOSE 5000
 
 # --- Health check -------------------------------------------------------------
+# Render runs its own health checks; this one covers local/docker usage.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request, sys; \
-sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/api/status', timeout=3).status == 200 else 1)"
+    CMD python -c "import os, urllib.request, sys; \
+p = os.environ.get('PORT', '5000'); \
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:' + p + '/api/status', timeout=3).status == 200 else 1)"
 
 # --- Entry point --------------------------------------------------------------
 # The web app keeps run state in module-level globals, so it must run as a
-# single process (no multi-worker WSGI server).
+# single process (no multi-worker WSGI server). Hosting platforms inject the
+# port to bind via $PORT (Render defaults to 10000).
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["python", "web_app.py", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["sh", "-c", "python web_app.py --host 0.0.0.0 --port ${PORT:-5000}"]

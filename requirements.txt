@@ -2,10 +2,12 @@ numpy>=1.24.0
 scipy>=1.11.0
 pandas>=2.0.0
 numba>=0.58.0
-optuna>=3.0.0
 flask>=3.0.0
 tomli>=2.0.0
-plotly>=5.17.0
-matplotlib>=3.7.0
-tqdm>=4.65.0
 scikit-learn>=1.2.0
+
+# Dropped for the Render-lite build (unused on the server, they only made the
+# image bigger): matplotlib, tqdm, plotly (charts are rendered from the CDN in
+# the browser) and optuna (fitting uses L-BFGS-B / Nelder-Mead; if objective_mort
+# is called with method='Optuna' it logs a warning and falls back automatically).
+

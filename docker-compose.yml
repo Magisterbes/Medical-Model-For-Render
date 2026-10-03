@@ -2,13 +2,18 @@ services:
   web:
     build:
       context: .
-    image: medicalmodel2024:latest
-    container_name: medicalmodel2024
+    image: medicalmodel2024-render:latest
+    container_name: medicalmodel2024-render
     ports:
       - "5000:5000"
     environment:
       HOST: "0.0.0.0"
       PORT: "5000"
+      # Optional overrides for the auto-detected limits (useful for testing):
+      # MEMORY_LIMIT_BYTES: "536870912"
+      # CPU_QUOTA: "1"
+    # Emulates Render's free plan (512 MB) so memory problems show up locally
+    mem_limit: 512m
     # Persist results, fitted parameters and uploaded datasets on the host.
     volumes:
       - ./output:/app/output

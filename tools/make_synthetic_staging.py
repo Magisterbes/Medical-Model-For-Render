@@ -20,6 +20,7 @@ Usage:  python tools/make_synthetic_staging.py
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import os
@@ -28,10 +29,8 @@ import sys
 import numpy as np
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IN_AGG = os.path.join(REPO_ROOT, 'data', 'globocan_colorectum_usa_agg.csv')
-OUT_IND = os.path.join(REPO_ROOT, 'data', 'globocan_colorectum_usa_ind.csv')
-OUT_META = os.path.join(REPO_ROOT, 'data', 'globocan_colorectum_usa_ind.meta.json')
-
+DATA_DIR = os.path.join(REPO_ROOT, 'data')
+DEFAULT_PREFIX = 'globocan_colorectum_usa'
 N_RECORDS = 2000
 SEED = 2022
 
@@ -53,27 +52,43 @@ def load_incidence_profile(path: str):
     return np.array(ages, dtype=np.int64), np.array(cases, dtype=np.float64)
 
 
-def main() -> int:
-    if not os.path.exists(IN_AGG):
-        print(f'Missing {IN_AGG} — run tools/build_globocan_dataset.py first.')
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description='Synthesise the staging dataset for a GLOBOCAN aggregate file.')
+    parser.add_argument('--prefix', default=DEFAULT_PREFIX,
+                        help='reads data/<prefix>_agg.csv, writes data/<prefix>_ind.csv')
+    parser.add_argument('--records', type=int, default=N_RECORDS,
+                        help='number of synthetic patient records')
+    parser.add_argument('--seed', type=int, default=SEED, help='random seed')
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    in_agg = os.path.join(DATA_DIR, f'{args.prefix}_agg.csv')
+    out_ind = os.path.join(DATA_DIR, f'{args.prefix}_ind.csv')
+    out_meta = os.path.join(DATA_DIR, f'{args.prefix}_ind.meta.json')
+
+    if not os.path.exists(in_agg):
+        print(f'Missing {in_agg} - run tools/build_globocan_dataset.py first.')
         return 1
 
-    ages, cases = load_incidence_profile(IN_AGG)
+    ages, cases = load_incidence_profile(in_agg)
     weights = cases / cases.sum()
 
-    rng = np.random.default_rng(SEED)
-    sampled_ages = rng.choice(ages, size=N_RECORDS, p=weights)
+    rng = np.random.default_rng(args.seed)
+    sampled_ages = rng.choice(ages, size=args.records, p=weights)
 
     stage_ids = np.array(sorted(STAGE_MIX), dtype=np.int64)
     stage_probs = np.array([STAGE_MIX[s] for s in stage_ids], dtype=np.float64)
     stage_probs = stage_probs / stage_probs.sum()
-    stages = rng.choice(stage_ids, size=N_RECORDS, p=stage_probs)
+    stages = rng.choice(stage_ids, size=args.records, p=stage_probs)
 
     aggressive_prob = np.array([AGGRESSIVE_BY_STAGE[s] for s in stages], dtype=np.float64)
-    aggressive = (rng.random(N_RECORDS) < aggressive_prob).astype(np.int64)
+    aggressive = (rng.random(args.records) < aggressive_prob).astype(np.int64)
 
     order = np.lexsort((aggressive, stages, sampled_ages))
-    with open(OUT_IND, 'w', encoding='utf-8', newline='\n') as handle:
+    with open(out_ind, 'w', encoding='utf-8', newline='\n') as handle:
         handle.write('Age;Stage;Aggressiveness\n')
         for i in order:
             handle.write('%d;%d;%d\n' % (sampled_ages[i], stages[i], aggressive[i]))
@@ -85,9 +100,9 @@ def main() -> int:
         'note': ('Stage and aggressiveness are NOT published by GLOBOCAN. This file is '
                  'synthesised for the accompanying aggregate dataset; do not interpret it '
                  'as registry data.'),
-        'aggregate_source': os.path.basename(IN_AGG),
-        'n_records': N_RECORDS,
-        'seed': SEED,
+        'aggregate_source': os.path.basename(in_agg),
+        'n_records': args.records,
+        'seed': args.seed,
         'target_stage_mix': STAGE_MIX,
         'realized_stage_mix': realized_stage,
         'aggressive_probability_by_stage': AGGRESSIVE_BY_STAGE,
@@ -95,11 +110,11 @@ def main() -> int:
         'age_range': [int(sampled_ages.min()), int(sampled_ages.max())],
         'delimiter': ';',
     }
-    with open(OUT_META, 'w', encoding='utf-8') as handle:
+    with open(out_meta, 'w', encoding='utf-8') as handle:
         json.dump(meta, handle, indent=2, ensure_ascii=False)
 
-    print(f'  written: {OUT_IND}  ({N_RECORDS} records, seed {SEED})')
-    print(f'  written: {OUT_META}')
+    print(f'  written: {out_ind}  ({args.records} records, seed {args.seed})')
+    print(f'  written: {out_meta}')
     print(f'  ages {int(sampled_ages.min())}-{int(sampled_ages.max())}, '
           f'median {int(np.median(sampled_ages))}')
     print('  realized stage mix :',

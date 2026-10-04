@@ -25,6 +25,7 @@ Usage:  python tools/build_globocan_dataset.py
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -33,19 +34,23 @@ import urllib.request
 import numpy as np
 
 API = 'https://gco-api.iarc.fr/api/globocan/v3/2022'
-COUNTRY = 840            # United States of America
 CANCERS = (8, 9)         # 8 = colon (C18), 9 = rectum (C19-20)
 SEX = 0                  # both sexes
 YEAR = 2022
 N_GROUPS = 18            # 0-4, 5-9, ... 85+
 MAX_AGE = 110
 STAGE_GROUPS = 17        # 17 five-year bands cover ages 0..84
-LIFE_EXPECTANCY = 77.5   # target e0 for the modelled all-cause mortality
-SEED = 2022
+LIFE_EXPECTANCY = 77.5   # default target e0 for the modelled all-cause mortality
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT_AGG = os.path.join(REPO_ROOT, 'data', 'globocan_colorectum_usa_agg.csv')
-OUT_META = os.path.join(REPO_ROOT, 'data', 'globocan_colorectum_usa_agg.meta.json')
+DATA_DIR = os.path.join(REPO_ROOT, 'data')
+
+# Set from the command line in main(); keeping them module level avoids extra
+# plumbing through every fetch helper.
+COUNTRY = 840
+COUNTRY_LABEL = 'United States of America'
+OUT_AGG = os.path.join(DATA_DIR, 'globocan_colorectum_usa_agg.csv')
+OUT_META = os.path.join(DATA_DIR, 'globocan_colorectum_usa_agg.meta.json')
 
 
 def _get(url: str) -> dict:
@@ -152,8 +157,31 @@ def write_aggregate(path: str, ages: np.ndarray, population: np.ndarray,
                          % (age, population[i], cases[i], deaths_cancer[i], deaths_all[i]))
 
 
-def main() -> int:
-    print('Fetching GLOBOCAN 2022 - colorectum, USA ...')
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description='Build an aggregate dataset (Age;population;cases;deaths cancer;deaths all) '
+                    'from GLOBOCAN 2022 for colorectal cancer.')
+    parser.add_argument('--country', type=int, default=840,
+                        help='GLOBOCAN country code (ISO numeric): 840 USA, 276 Germany, '
+                             '392 Japan, ...')
+    parser.add_argument('--country-name', default='United States of America',
+                        help='country label stored in the metadata')
+    parser.add_argument('--out-prefix', default='globocan_colorectum_usa',
+                        help='output file prefix inside data/')
+    parser.add_argument('--life-expectancy', type=float, default=LIFE_EXPECTANCY,
+                        help='target life expectancy for the modelled all-cause mortality')
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    global COUNTRY, COUNTRY_LABEL, OUT_AGG, OUT_META
+    args = parse_args(argv)
+    COUNTRY = args.country
+    COUNTRY_LABEL = args.country_name
+    OUT_AGG = os.path.join(DATA_DIR, f'{args.out_prefix}_agg.csv')
+    OUT_META = os.path.join(DATA_DIR, f'{args.out_prefix}_agg.meta.json')
+
+    print(f'Fetching GLOBOCAN 2022 - colorectum, {COUNTRY_LABEL} ({COUNTRY}) ...')
     pop_bands, case_bands, death_bands = fetch_all()
     ages = np.arange(0, MAX_AGE + 1, dtype=np.float64)
 
@@ -165,7 +193,7 @@ def main() -> int:
 
     # Population as counts per single year; the open 85+ band is split with the
     # modelled survival curve so the very old are progressively rarer.
-    mu, survival = makeham_gompertz(ages)
+    mu, survival = makeham_gompertz(ages, e0_target=args.life_expectancy)
     population = expand_band_rates(pop_bands / 5.0, ages)
     tail = survival[85:] / survival[85:].sum()
     population[85:] = pop_bands[N_GROUPS - 1] * tail
@@ -187,7 +215,7 @@ def main() -> int:
                      'Observatory: Cancer Today (version 1.1). Lyon, France: International '
                      'Agency for Research on Cancer. https://gco.iarc.who.int/today'),
         'site': 'Colorectum (colon C18 + rectum C19-20)',
-        'country': 'United States of America (840)',
+        'country': f'{COUNTRY_LABEL} ({COUNTRY})',
         'sex': 'both',
         'year': YEAR,
         'totals': {'cases': total_cases, 'deaths': total_deaths, 'population': total_pop},
@@ -195,7 +223,7 @@ def main() -> int:
                   'expanded to single years of age. GLOBOCAN reports 85+ as one open band, '
                   'so that rate is applied to ages 85-110. "deaths all" is not published by '
                   'GLOBOCAN: it is a Makeham-Gompertz all-cause mortality pattern '
-                  f'calibrated to a life expectancy of {LIFE_EXPECTANCY} years.'),
+                  f'calibrated to a life expectancy of {args.life_expectancy} years.'),
         'delimiter': ';',
     }
     with open(OUT_META, 'w', encoding='utf-8') as handle:

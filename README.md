@@ -43,38 +43,52 @@ Render compute plans: **Free / Starter = 512 MB**, **Standard = 2 GB**.
    Image size 1.26 GB → **0.99 GB**.
 7. **Binds to `$PORT`** as required by Render and most PaaS providers.
 
-## Default dataset (GLOBOCAN 2022)
+## Datasets
 
-The app ships with **GLOBOCAN 2022 colorectal cancer figures for the United
-States** (both sexes) as its default input:
+Datasets are declared in **`data/datasets.json`** and offered as a single dropdown in
+the parameter panel. Selecting one sets the aggregate *and* the staging file together,
+which makes a mismatched pair (a US aggregate with German staging, say) impossible to
+pick by accident; the panel shows the description, the totals and the citation stored
+next to the files. Both file lists are still available under
+*Advanced: choose files individually*, so uploaded CSVs keep working.
 
-| File | Content | Provenance |
-|------|---------|------------|
-| `data/globocan_colorectum_usa_agg.csv` | Population, cases and cancer deaths per single year of age (0–110) | **Real** GLOBOCAN figures per five-year band, expanded to single years |
-| `data/globocan_colorectum_usa_ind.csv` | Age, stage and aggressiveness for 2 000 patients | **Synthetic** — GLOBOCAN publishes no stage data |
+| Dataset | Aggregate | Staging | Source |
+|---------|-----------|---------|--------|
+| **GLOBOCAN 2022 · Colorectal · USA** *(default)* | `globocan_colorectum_usa_agg.csv` | `globocan_colorectum_usa_ind.csv` (synthetic) | GLOBOCAN 2022 (v1.1), IARC |
+| **GLOBOCAN 2022 · Colorectal · Germany** | `globocan_colorectum_germany_agg.csv` | `globocan_colorectum_germany_ind.csv` (synthetic) | GLOBOCAN 2022 (v1.1), IARC |
+| **Original MedicalModel2024 · Russia** | `data_agg_rus.csv` | `data_ind.csv` | shipped with the original repository |
 
-Totals: **151 162 cases**, **52 924 deaths**, population 334 805 268 — a crude
-incidence rate of 45.15 per 100 000, matching the published GLOBOCAN rates
-(colon 31.43 + rectum 13.72).
+The GLOBOCAN aggregates are **real** incidence and mortality per five-year age band,
+expanded to single years of age; the `deaths all` column and the staging records are
+**synthetic**, because GLOBOCAN publishes neither (see Appendix A of the guide).
+
+| Dataset | Cases | Deaths | Population | Crude incidence |
+|---------|------:|-------:|-----------:|----------------:|
+| USA | 151 162 | 52 924 | 334 805 268 | 45.15 per 100 000 |
+| Germany | 59 851 | 25 844 | 83 883 587 | 71.35 per 100 000 |
+
+### Rebuilding or extending a dataset
+
+The tools take the country as an argument — no copy-paste fork of the script is needed:
+
+```bash
+python tools/build_globocan_dataset.py --country 276 --country-name Germany \
+       --out-prefix globocan_colorectum_germany --life-expectancy 80.7
+python tools/make_synthetic_staging.py --prefix globocan_colorectum_germany
+```
+
+Country codes are ISO numeric (`840` USA, `276` Germany, `392` Japan, …). Then append
+one entry to `data/datasets.json` and restart: the file names in the entry are all the
+application needs, so no code changes are involved. An entry whose CSVs are missing from
+`data/` is dropped automatically, and the appendix of `/guide` documents the same
+procedure.
 
 > Ferlay J, Ervik M, Lam F, Laversanne M, Colombet M, Mery L, Piñeros M, Znaor A,
 > Soerjomataram I, Bray F (2024). *Global Cancer Observatory: Cancer Today
 > (version 1.1)*. Lyon: International Agency for Research on Cancer.
 > <https://gco.iarc.who.int/today>
 
-`deaths all` (all-cause mortality) is not published by GLOBOCAN either; it is a
-Makeham–Gompertz pattern calibrated to a US life expectancy of ~77.5 years, and
-the model only uses its shape.
-
-Both files are committed, so the app never calls the API at runtime. They can be
-regenerated with:
-
-```bash
-python tools/build_globocan_dataset.py     # fetch + expand the aggregate file
-python tools/make_synthetic_staging.py     # synthesise the staging file
-```
-
-The earlier Russian datasets remain in `data/` and stay selectable in the UI.
+Neither file is fetched at runtime — both are committed to the repository.
 
 ## Safe population per plan
 
@@ -214,11 +228,20 @@ MedicalModelPython/
 │   └── objective_mort.py       # Cancer death hazard (Poisson MLE, L-BFGS-B)
 ├── config/
 │   └── parameters.toml         # Model configuration
-├── data/                       # CSV data files (can be replaced via UI)
-│   ├── data_agg_rus.csv        # Aggregate demographic + incidence + mortality
-│   └── data_ind.csv            # Individual staging records (age, stage, aggressiveness)
+├── data/                       # CSV datasets (extended via the manifest, no code changes)
+│   ├── datasets.json           # Manifest of the named datasets offered in the UI
+│   ├── globocan_colorectum_usa_agg.csv       # GLOBOCAN 2022, USA — aggregate (default)
+│   ├── globocan_colorectum_usa_ind.csv       # ... staging (synthetic)
+│   ├── globocan_colorectum_germany_agg.csv   # GLOBOCAN 2022, Germany — aggregate
+│   ├── globocan_colorectum_germany_ind.csv   # ... staging (synthetic)
+│   ├── data_agg_rus.csv        # Original MedicalModel2024 aggregate
+│   └── data_ind.csv            # Original MedicalModel2024 staging
+├── tools/                      # Dataset builders (run offline, not at app runtime)
+│   ├── build_globocan_dataset.py   # Fetch + expand any GLOBOCAN country into an aggregate file
+│   └── make_synthetic_staging.py   # Synthesise the matching staging file
 ├── templates/
-│   └── index.html              # Web dashboard with Plotly charts + sensitivity section
+│   ├── index.html              # Web dashboard with Plotly charts + sensitivity section
+│   └── guide.html              # Data-format guide, API examples, dataset appendix
 ├── python_port_analysis.tex    # Scientific analysis with equations and validity critique
 ├── model_for_dummies.tex       # Plain-language guide (no formulas)
 ├── test_fit_speed.py           # Benchmark for calibration speed
@@ -237,7 +260,7 @@ MedicalModelPython/
   - Filled area curves for years saved by lead-time factor
   - Stage distribution at baseline
   - Tornado bars and numeric table for aggregate metrics
-- **Data file management:** Upload and validate new CSV datasets through the UI; switch data sources on-the-fly
+- **Dataset management:** Named datasets from `data/datasets.json` (GLOBOCAN USA / Germany, legacy Russia) chosen in a single dropdown, which sets the aggregate *and* staging file together so they cannot be mismatched. New CSVs can be uploaded and validated, then selected under *Advanced: choose files individually*
 - **Reproducibility:** Deterministic seeds logged for every run
 
 ## Performance

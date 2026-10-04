@@ -8,9 +8,9 @@ unreal_life_length = 110
 
 [data]
 data_dir = "data"
-# Default datasets: GLOBOCAN 2022, colorectal cancer, USA, both sexes.
-# (data_agg_rus.csv / data_ind.csv are still available in the data folder and
-#  remain selectable in the UI.)  See tools/build_globocan_dataset.py.
+# Fallback data files, used only when the UI is left at "(default from config)".
+# The named datasets offered in the UI are declared in data/datasets.json, which
+# lists each aggregate/staging pair together (see the guide, Appendix A).
 train_data_filename = "globocan_colorectum_usa_agg.csv"
 train_staging_data_filename = "globocan_colorectum_usa_ind.csv"
 

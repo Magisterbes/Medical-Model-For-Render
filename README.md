@@ -42,6 +42,9 @@ Render compute plans: **Free / Starter = 512 MB**, **Standard = 2 GB**.
    (unused on the server; the browser loads Plotly from a CDN).
    Image size 1.26 GB → **0.99 GB**.
 7. **Binds to `$PORT`** as required by Render and most PaaS providers.
+8. **Per-run isolation** — a single simulation slot guarded by a lock, a `run_id`
+   on every result, downloads scoped to their own directory, sanitised uploads.
+   See *Concurrent access* below.
 
 ## Datasets
 
@@ -146,8 +149,9 @@ header) covering:
 ## Downloads
 
 After each **Fit + Simulate** or **Sensitivity** run the UI shows a
-**⬇ Downloads** panel. The same list is available at `GET /api/downloads` and
-each file is streamed from `GET /api/download/<name>`.
+**⬇ Downloads** panel. The same list is available at `GET /api/downloads`, and
+each file is streamed from `GET /api/download/<run_id>/<name>` — the id is the one
+the run returned, and a link carrying another run's id is refused with 404.
 
 | Single run | Sensitivity |
 |------------|-------------|
@@ -156,13 +160,37 @@ each file is streamed from `GET /api/download/<name>`.
 | `chart_*.csv` — the data behind every chart | `sens_metrics.csv` — metrics per factor |
 | `summary.csv`, `meta.json` | `meta.json` |
 
-Files are streamed to `output/exports/` in fixed-size chunks, so the peak extra
-memory stays at a few MB regardless of the population size (a 50 000-agent
-history is ~3.8 MB of CSV). Only the **latest** run is kept — starting a new run
-replaces the folder. On Render the folder is ephemeral, like the uploads.
+Files are streamed to `output/exports/<run_id>/` in fixed-size chunks, so the peak
+extra memory stays at a few MB regardless of the population size (a 50 000-agent
+history is ~3.8 MB of CSV). One directory per run means a new run can no longer
+delete the files another session is still downloading; the newest
+`EXPORT_DIRS_KEPT` (3) bundles are kept and older ones are pruned. On Render the
+whole tree is ephemeral, like the uploads.
 
 `meta.json` documents every agent column, and all exports use `;` as the
 delimiter, matching the input files.
+
+## Concurrent access (two visitors at once)
+
+A single free instance is one process holding one simulation, so visitors share
+it. Rather than pretend otherwise, the build **serialises the work and scopes the
+results**:
+
+| Guarantee | How |
+|-----------|-----|
+| Only **one** simulation at a time | The idle→busy transition is made under a lock. Previously the flag was checked and set ~20 lines apart, so two requests arriving together could both start a run — two populations in 512 MB is an OOM kill. |
+| Every run has an **id** (`run_id`) | `/api/status`, `/api/results` and `/api/downloads` return it; the browser stores it per tab and ignores anything carrying a different one, so a visitor is never shown another's progress, charts or files. |
+| Downloads cannot be cross-served | The URL carries the run id *and* the file must be in that run's manifest; a foreign id, or the old id-less URL, returns 404. |
+| Exports cannot collide | One directory per run (`output/exports/<run_id>/`), so no run can `rmtree` another's files. |
+| Uploads cannot damage the shipped data | Names are sanitised (`secure_filename`), files listed in `datasets.json` cannot be overwritten, and validation runs on a temporary file that is *moved* into place only on success — a rejected upload can no longer delete an existing file. |
+| Reproducibility survives concurrency | The RNG state is thread-local, so one run cannot re-seed the stream another is drawing from. Seeded runs still produce byte-identical numbers. |
+
+Deliberately **not** solved here: a second visitor is asked to wait rather than
+queued, and `data/` uploads are still shared (same name = overwrite). Per-visitor
+isolation — cookie sessions, per-user directories, a task queue — is the next
+step, and it only works on a single instance: running more than one would need
+shared state (Redis) and shared storage, because the run registry lives in
+process memory.
 
 ## Local development
 

@@ -179,11 +179,16 @@
             <li><code>agents_factor_&lt;x&gt;.csv</code> — per-agent history for that factor
                 (cancer patients only, to keep the size down).</li>
         </ul>
+        <p class="muted">Each run writes into its own directory
+            (<code>output/exports/&lt;run_id&gt;/</code>) and the download links carry that id:
+            a link is only valid for the run that produced it, so
+            <code>/api/download/&lt;run_id&gt;/&lt;file&gt;</code> with somebody else's id returns
+            404.</p>
         <div class="warn">
-            Only the <b>latest</b> run is kept — starting a new run replaces the previous files.
-            On a hosted instance the folder is also lost when the service restarts, so download
-            what you need before then. Data files use <code>;</code> as the delimiter, like the
-            input files.
+            Only the newest runs are kept — starting a new run prunes older bundles
+            (<code>EXPORT_DIRS_KEPT</code>, 3 by default). On a hosted instance the folder is also
+            lost when the service restarts, so download what you need before then. Data files use
+            <code>;</code> as the delimiter, like the input files.
         </div>
     </div>
 
@@ -241,6 +246,38 @@ curl http://localhost:5000/api/data/list       # every validated CSV, classified
                 <td>Not enough RAM for that run. Lower the population or use a larger plan; the
                     limit is shown under the Population field.</td></tr>
         </table>
+    </div>
+
+    <div class="card">
+        <h2>9. Two people using the site at once</h2>
+        <p>One instance runs <b>one simulation at a time</b>. That is a property of the hosting
+            tier — two populations at once do not fit in 512 MB — so the app serialises the work
+            and keeps each visitor's results apart instead:</p>
+        <ul>
+            <li><b>One run at a time.</b> If a simulation is already running, a new request is
+                refused with <code>409</code> and <i>“Another simulation is already running on this
+                instance”</i>. Wait for it to finish and try again. The busy flag is taken
+                atomically, so two requests arriving in the same instant cannot both start a
+                run.</li>
+            <li><b>Every run has an id.</b> A run returns its <code>run_id</code>; the page keeps
+                it in the browser tab (<code>sessionStorage</code>) and ignores any status, chart or
+                download carrying a different one. You are never shown another visitor's results —
+                if someone else's run finishes while your page is open, the status line tells you
+                so instead.</li>
+            <li><b>Downloads belong to their run.</b> Each run writes to its own directory and its
+                links are <code>/api/download/&lt;run_id&gt;/&lt;file&gt;</code>. A link from another
+                run (or the old link without an id) returns <code>404</code>.</li>
+            <li><b>Reloading is safe.</b> Reload the page during your own run and it resumes
+                watching it; another visitor's run is never adopted.</li>
+        </ul>
+        <div class="note">
+            <b>What is still shared.</b> Uploaded CSVs live in a single <code>data/</code> folder,
+            so two people uploading the same file name overwrite each other and every uploaded file
+            is visible to everyone. Files that belong to a shipped dataset (Appendix A) cannot be
+            overwritten by an upload at all, and a rejected upload never deletes an existing file.
+            Ask before re-using a file name, and download your results while they are still on
+            disk.
+        </div>
     </div>
 
     <div class="card">

@@ -382,9 +382,9 @@ python tools/make_synthetic_staging.py --prefix globocan_colorectum_germany</pre
                 <td>Population-mean growth rate, on a log scale. Larger values mean faster
                     progression; each patient draws <code>B = exp(log(B_pop) + eps)</code>.</td></tr>
             <tr><td><code>B_std</code></td>
-                <td>Standard deviation of the individual random effect on <code>log(B)</code> —
-                    how much patients differ in growth speed (<code>0</code> = everybody grows at
-                    the same rate).</td></tr>
+                <td>Standard deviation of the individual random effect on <code>log(B)</code> in the
+                    model definition. The Gompertz curve is fitted and reported but does not drive
+                    the simulation, so changing <code>B_std</code> does not alter simulated results.</td></tr>
         </table>
     </div>
 
